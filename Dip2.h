@@ -1,12 +1,3 @@
-//============================================================================
-// Name        : Dip2.h
-// Author      : Ronny Haensch
-// Version     : 2.0
-// Copyright   : -
-// Description : header file for second DIP assignment
-//============================================================================
-
-
 #include <opencv2/opencv.hpp>
 
 #include <iostream>

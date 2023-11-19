@@ -1,32 +1,20 @@
-//============================================================================
-// Name        : main.cpp
-// Author      : Ronny Haensch
-// Version     : 2.0
-// Copyright   : -
-// Description : only calls processing and test routines
-//============================================================================
-
-//  g++ -o main main.cpp dip2.cpp -std=c++11 -I/opt/homebrew/Cellar/opencv/4.8.1_1/include/opencv4/ -L/opt/homebrew/Cellar/opencv/4.8.1_1/lib -lopencv_core -lopencv_highgui -lopencv_imgcodecs -lopencv_imgproc
-
 #include "Dip2.h"
-
 #include <opencv2/opencv.hpp>
-
 #include <stdexcept>
 #include <iostream>
 #include <string>
 #include <sstream>
-
+#include <Windows.h>
+#include <fstream>
 using namespace std;
 using namespace cv;
 
 cv::Mat_<float> tryLoadImage(const std::string &filename)
 {
     cv::Mat img = cv::imread(filename, 0);
-    if (!img.data)
-    {
+    if (!img.data){
         cout << "ERROR: file " << filename << " not found" << endl;
-        cout << "Press enter to exit" << endl;
+        cout << "Press enter to exit"  << endl;
         cin.get();
         exit(-3);
     }
@@ -36,110 +24,146 @@ cv::Mat_<float> tryLoadImage(const std::string &filename)
     return cv::Mat_<float>(img);
 }
 
-// generates and saves different noisy versions of input image
-/*
-fname:   path to the input image
-*/
+Mat resizeImage(const Mat& img) {
+    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    double screenScale = min((double)screenWidth / img.cols, (double)screenHeight / img.rows);
+    double scale = screenScale * 0.5;
+    Mat resized;
+    resize(img, resized, Size(), scale, scale, INTER_LINEAR);
+    return resized;
+}
+
+void displayImage(const Mat& img, const string& windowName) {
+    namedWindow(windowName, WINDOW_AUTOSIZE);
+    imshow(windowName, img);
+}
+
+Mat convertToDisplayableImage(const Mat& img) {
+    Mat displayable;
+    img.convertTo(displayable, CV_8U); // Assuming image is in floating point format
+    return resizeImage(displayable);
+}
+
 cv::Mat_<float> generateNoisyImage(const cv::Mat_<float> &img, dip2::NoiseType noiseType)
 {
     // generate images with different types of noise
-    switch (noiseType)
-    {
-    case dip2::NOISE_TYPE_1:
-    {
-        // some temporary images
-        Mat tmp1(img.rows, img.cols, CV_32FC1);
-        Mat tmp2(img.rows, img.cols, CV_32FC1);
-        // first noise operation
-        float noiseLevel = 0.15;
-        randu(tmp1, 0, 1);
-        threshold(tmp1, tmp2, noiseLevel, 1, THRESH_BINARY);
-        multiply(tmp2, img, tmp2);
-        threshold(tmp1, tmp1, 1 - noiseLevel, 1, THRESH_BINARY);
-        tmp1 *= 255;
-        tmp1 = tmp2 + tmp1;
-        threshold(tmp1, tmp1, 255, 255, THRESH_TRUNC);
-        return tmp1;
-    }
-    break;
-    case dip2::NOISE_TYPE_2:
-    {
-        // some temporary images
-        Mat tmp1(img.rows, img.cols, CV_32FC1);
-        Mat tmp2(img.rows, img.cols, CV_32FC1);
-        // second noise operation
-        float noiseLevel = 50;
-        randn(tmp1, 0, noiseLevel);
-        tmp1 = img + tmp1;
-        threshold(tmp1, tmp1, 255, 255, THRESH_TRUNC);
-        threshold(tmp1, tmp1, 0, 0, THRESH_TOZERO);
-        return tmp1;
-    }
-    break;
-    default:
-        throw std::runtime_error("Unhandled noise type!");
+    switch (noiseType) {
+        case dip2::NOISE_TYPE_1: {
+            // some temporary images
+            Mat tmp1(img.rows, img.cols, CV_32FC1);
+            Mat tmp2(img.rows, img.cols, CV_32FC1);
+            // first noise operation
+            float noiseLevel = 0.15;
+            randu(tmp1, 0, 1);
+            threshold(tmp1, tmp2, noiseLevel, 1, THRESH_BINARY);
+            multiply(tmp2,img,tmp2);
+            threshold(tmp1, tmp1, 1-noiseLevel, 1, THRESH_BINARY);
+            tmp1 *= 255;
+            tmp1 = tmp2 + tmp1;
+            threshold(tmp1, tmp1, 255, 255, THRESH_TRUNC);
+            return tmp1;
+        } break;
+        case dip2::NOISE_TYPE_2: {
+            // some temporary images
+            Mat tmp1(img.rows, img.cols, CV_32FC1);
+            Mat tmp2(img.rows, img.cols, CV_32FC1);
+            // second noise operation
+            float noiseLevel = 50;
+            randn(tmp1, 0, noiseLevel);
+            tmp1 = img + tmp1;
+            threshold(tmp1,tmp1,255,255,THRESH_TRUNC);
+            threshold(tmp1,tmp1,0,0,THRESH_TOZERO);
+            return tmp1;
+        } break;
+        default:
+            throw std::runtime_error("Unhandled noise type!");
     }
 }
 
-int main(int argc, char **argv)
-{
+float calculatePSNR(const cv::Mat &original, const cv::Mat &processed) {
+    // Ensure the images are of the same size and type
+    if (original.size() != processed.size() || original.type() != processed.type()) {
+        std::cerr << "Original and processed images must have the same size and type" << std::endl;
+        return -1;
+    }
 
-    // check if enough arguments are defined
-    if (argc < 2)
-    {
-        cout << "Usage: ./main path_to_original_image" << endl;
+    cv::Mat diff;
+    cv::absdiff(original, processed, diff); // Absolute difference between images
+    diff.convertTo(diff, CV_32F); // Convert to float
+    diff = diff.mul(diff); // Squaring each element
+
+    double mse = cv::mean(diff)[0]; // Mean Squared Error
+    if (mse == 0) {
+        return std::numeric_limits<float>::infinity(); // Avoid division by zero
+    }
+
+    double psnr = 10.0 * log10((255 * 255) / mse); // Calculate PSNR
+    return static_cast<float>(psnr);
+}
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        cout << "C:\\Users\\Juli\\Downloads\\dip02\\testimage.jpg" << endl;
         cout << "Press enter to exit" << endl;
         cin.get();
         return -1;
     }
 
-    cout << "load original image" << endl;
-    cv::Mat_<float> originalImage = tryLoadImage(argv[1]);
-    cout << "done" << endl;
-
-    cout << "generate noisy images" << endl;
-    cv::Mat_<float> noisyImage[dip2::NUM_NOISE_TYPES];
-    for (unsigned i = 0; i < dip2::NUM_NOISE_TYPES; i++)
-    {
-        noisyImage[i] = generateNoisyImage(originalImage, (dip2::NoiseType)i);
-        imwrite(std::string(dip2::noiseTypeNames[i]) + ".jpg", noisyImage[i]);
-    }
-    cout << "done" << endl;
-
-    cout << "denoising" << endl;
-    cv::Mat_<float> denoisedImage[dip2::NUM_NOISE_TYPES][dip2::NUM_FILTERS];
-    for (unsigned i = 0; i < dip2::NUM_NOISE_TYPES; i++)
-        for (unsigned j = 0; j < dip2::NUM_FILTERS; j++)
-        {
-            denoisedImage[i][j] = denoiseImage(noisyImage[i], (dip2::NoiseType)i, (dip2::NoiseReductionAlgorithm)j);
-
-            std::stringstream filename;
-            filename << "restorated__" << dip2::noiseTypeNames[i] << "__" << dip2::noiseReductionAlgorithmNames[j] << ".jpg";
-            cv::imwrite(filename.str(), denoisedImage[i][j]);
-
-            cv::Mat_<float> diff = denoisedImage[i][j] - originalImage;
-            float meanSqrDiff = cv::mean(diff.mul(diff))[0];
-            float PSNR = 10.0f * std::log10(255 * 255 / meanSqrDiff);
-
-            cout << "PSNR for " << dip2::noiseTypeNames[i] << " with " << dip2::noiseReductionAlgorithmNames[j] << ": " << PSNR << " dB" << std::endl;
-        }
-    cout << "done (higher PSNR is better)" << endl;
-
-    for (unsigned i = 0; i < dip2::NUM_NOISE_TYPES; i++)
-    {
-        dip2::NoiseReductionAlgorithm bestAlgorithm = chooseBestAlgorithm((dip2::NoiseType)i);
-
-        if ((unsigned)bestAlgorithm >= dip2::NUM_FILTERS)
-        {
-            std::cout << "Error: chooseBestAlgorithm returns invalid algorithm" << std::endl;
-        }
-        else
-        {
-            std::stringstream filename;
-            filename << "restorated__" << dip2::noiseTypeNames[i] << "__best.jpg";
-            cv::imwrite(filename.str(), denoisedImage[i][bestAlgorithm]);
-        }
+    // Load original image
+    cout << "Loading original image" << endl;
+    Mat originalImage = imread(argv[1], IMREAD_COLOR);
+    if (originalImage.empty()) {
+        cerr << "Error: Unable to open test image!" << endl;
+        return -1;
     }
 
+    std::ofstream outFile("C:\\Users\\Juli\\Downloads\\dip02\\psnr_results.txt");
+    if (!outFile) {
+        std::cerr << "Error creating file!" << std::endl;
+        return -1;
+    }
+
+    // Convert original image to grayscale and resize it
+    Mat grayOriginal;
+    cvtColor(originalImage, grayOriginal, COLOR_BGR2GRAY);
+    Mat resizedGrayOriginal = resizeImage(grayOriginal); 
+    displayImage(resizedGrayOriginal, "Original Grayscale Image");
+
+    // Convert the resized grayscale image to float for filtering
+    Mat floatGrayOriginal;
+    resizedGrayOriginal.convertTo(floatGrayOriginal, CV_32F);
+
+    // Process each noise type
+    for (unsigned i = 0; i < dip2::NUM_NOISE_TYPES; i++) {
+        cout << "Processing noise type: " << dip2::noiseTypeNames[i] << endl;
+
+        // Generate noisy image
+        Mat_<float> noisyImage = generateNoisyImage(floatGrayOriginal, (dip2::NoiseType)i);
+        Mat displayNoisy = convertToDisplayableImage(noisyImage);
+        displayImage(displayNoisy, string("Noisy Image - ") + dip2::noiseTypeNames[i]);
+
+        // Denoise image
+        Mat_<float> denoisedImage = denoiseImage(noisyImage, (dip2::NoiseType)i, chooseBestAlgorithm((dip2::NoiseType)i));
+        Mat displayDenoised = convertToDisplayableImage(denoisedImage);
+        displayImage(displayDenoised, string("Denoised Image - ") + dip2::noiseTypeNames[i]);
+
+        // Calculate and display PSNR
+        float psnrValue = calculatePSNR(floatGrayOriginal, denoisedImage);
+        // Write the PSNR value to the file
+        outFile << "PSNR value for " << dip2::noiseTypeNames[i] << ": " << psnrValue << " dB" << std::endl;
+    }
+    // Close the file
+    outFile.close();
+    if (outFile.fail()) {
+        std::cerr << "Error: Failed to write to the file." << std::endl;
+    } else {
+        std::cout << "PSNR values written to C:\\Users\\Juli\\Downloads\\dip02\\psnr_results.txt successfully." << std::endl;
+    }
+
+    cout << "Processing completed." << endl;
+    waitKey(0);
     return 0;
 }
+
+

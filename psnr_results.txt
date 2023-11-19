@@ -1,0 +1,2 @@
+PSNR value for NOISE_TYPE_1: 22.7567 dB
+PSNR value for NOISE_TYPE_2: 21.5946 dB
